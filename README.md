@@ -1,24 +1,31 @@
 # AWS AI Agent Lab
 
-A hands-on project for learning how to build a read-only AI agent on AWS.
+A hands-on learning project exploring how to build AI agents with practical governance controls.
 
-## Learning goals
+The project is inspired by a simple question:
 
-1. Call a model safely.
-2. Structure an agent’s instructions and responses.
-3. Add read-only tools.
-4. Ground answers in evidence.
-5. Add tests, evaluation, and observability.
-6. Deploy only after the local design is understood.
+> How can small and medium-sized enterprises keep AI agents responsible and accountable without immediately investing in complex engineering or expensive governance tooling?
 
-## Safety and budget principles
+## Current focus
 
-- Never commit secrets, access keys, tokens, or sensitive logs.
-- Use IAM roles and temporary credentials.
-- Start with local mocks before paid AWS API calls.
-- Add an AWS Budget alert before using billable services.
-- Keep the initial agent read-only.
+The first implementation demonstrates two basic governance controls:
 
-## Project status
+1. **Tool registry** — defines which capabilities are available.
+2. **Action policy** — defines which available capabilities are permitted.
 
-Repository created. Safety foundations are in place.
+The current agent is deliberately local and mocked. It does not call Amazon Bedrock, access AWS resources or execute real infrastructure changes.
+
+## Governance flow
+
+```text
+User request
+    ↓
+Agent identifies intended action
+    ↓
+Tool registry checks availability
+    ↓
+Policy checks permission
+    ↓
+Action executes or is blocked
+    ↓
+Trace records the outcome
