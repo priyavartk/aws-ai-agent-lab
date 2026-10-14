@@ -1,6 +1,7 @@
 import unittest
 
 from src.agent import run_agent
+from src.policy import ActionPolicy
 
 
 class AgentTests(unittest.TestCase):
@@ -35,6 +36,23 @@ class AgentTests(unittest.TestCase):
         run_agent("Check the service status", {"read_status": lambda: "healthy"}, trace)
 
         self.assertEqual(trace, [{"action": "read_status", "outcome": "completed"}])
+
+    def test_policy_blocks_registered_deployment_tool(self):
+        calls = []
+
+        def deploy_tool():
+            calls.append("called")
+            return "deployed"
+
+        result = run_agent(
+            "Deploy the application",
+            {"deploy": deploy_tool},
+            policy=ActionPolicy.read_only(),
+        )
+
+        self.assertEqual(result.action, "policy_blocked")
+        self.assertEqual(result.answer, "Action 'deploy' is blocked by policy.")
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":
