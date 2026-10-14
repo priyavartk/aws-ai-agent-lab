@@ -1,41 +1,34 @@
-"""A tiny, dependency-free agent loop for learning purposes."""
+import unittest
 
-from dataclasses import dataclass
-from typing import Callable
-
-
-@dataclass(frozen=True)
-class AgentResult:
-    """The agent's answer and the action it selected."""
-
-    answer: str
-    action: str
+from src.agent import run_agent
 
 
-def run_agent(request: str, status_tool: Callable[[], str]) -> AgentResult:
-    """Route a request to a safe read-only tool or answer directly.
+class AgentTests(unittest.TestCase):
+    def test_status_request_uses_read_only_tool(self):
+        calls = []
 
-    This is deliberately rule-based. Later, an LLM can replace the routing
-    decision, while the tool boundary remains explicit and testable.
-    """
-    normalized = request.strip().lower()
+        def status_tool():
+            calls.append("called")
+            return "healthy"
 
-    if "status" in normalized or "health" in normalized:
-        evidence = status_tool()
-        return AgentResult(
-            answer=f"System status: {evidence}",
-            action="read_status",
-        )
+        result = run_agent("Can you check the service status?", {"read_status": status_tool})
 
-    return AgentResult(
-        answer=(
-            "I can currently answer simple questions or check system status. "
-            "No infrastructure-changing actions are available."
-        ),
-        action="direct_answer",
-    )
+        self.assertEqual(result.action, "read_status")
+        self.assertEqual(result.answer, "System status: healthy")
+        self.assertEqual(calls, ["called"])
+
+    def test_unknown_request_does_not_call_tool(self):
+        result = run_agent("Deploy the application", {"read_status": lambda: self.fail("called")})
+
+        self.assertEqual(result.action, "direct_answer")
+        self.assertIn("No infrastructure-changing actions", result.answer)
+
+    def test_status_tool_can_be_disabled(self):
+        result = run_agent("Check the service status", {})
+
+        self.assertEqual(result.action, "tool_unavailable")
+        self.assertEqual(result.answer, "Status checks are not enabled for this agent.")
 
 
 if __name__ == "__main__":
-    result = run_agent("What is the system status?", lambda: "healthy")
-    print(result.answer)
+    unittest.main()
