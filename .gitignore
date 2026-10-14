@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
+.DS_Store
+.vscode/
+.idea/
+dist/
+build/
+.coverage
+htmlcov/
