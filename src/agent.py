@@ -1,34 +1,67 @@
-import unittest
+"""A tiny, dependency-free agent loop for learning purposes."""
 
-from src.agent import run_agent
+from dataclasses import dataclass
+from typing import Callable
 
 
-class AgentTests(unittest.TestCase):
-    def test_status_request_uses_read_only_tool(self):
-        calls = []
+@dataclass(frozen=True)
+class AgentResult:
+    """The agent's answer and the action it selected."""
 
-        def status_tool():
-            calls.append("called")
-            return "healthy"
+    answer: str
+    action: str
 
-        result = run_agent("Can you check the service status?", {"read_status": status_tool})
 
-        self.assertEqual(result.action, "read_status")
-        self.assertEqual(result.answer, "System status: healthy")
-        self.assertEqual(calls, ["called"])
+def run_agent(
+    request: str,
+    tools: dict[str, Callable[[], str]],
+    trace: list[dict[str, str]] | None = None,
+) -> AgentResult:
+    """Route a request to a safe read-only tool or answer directly.
 
-    def test_unknown_request_does_not_call_tool(self):
-        result = run_agent("Deploy the application", {"read_status": lambda: self.fail("called")})
+    This is deliberately rule-based. Later, an LLM can replace the routing
+    decision, while the tool boundary remains explicit and testable.
+    """
+    normalized = request.strip().lower()
 
-        self.assertEqual(result.action, "direct_answer")
-        self.assertIn("No infrastructure-changing actions", result.answer)
+    if "status" in normalized or "health" in normalized:
+        if "read_status" not in tools:
+            result = AgentResult(
+                answer="Status checks are not enabled for this agent.",
+                action="tool_unavailable",
+            )
+            _record(trace, result.action, "blocked")
+            return result
 
-    def test_status_tool_can_be_disabled(self):
-        result = run_agent("Check the service status", {})
+        evidence = tools["read_status"]()
+        result = AgentResult(
+            answer=f"System status: {evidence}",
+            action="read_status",
+        )
+        _record(trace, result.action, "completed")
+        return result
 
-        self.assertEqual(result.action, "tool_unavailable")
-        self.assertEqual(result.answer, "Status checks are not enabled for this agent.")
+    result = AgentResult(
+        answer=(
+            "I can currently answer simple questions or check system status. "
+            "No infrastructure-changing actions are available."
+        ),
+        action="direct_answer",
+    )
+    _record(trace, result.action, "completed")
+    return result
+
+
+def _record(
+    trace: list[dict[str, str]] | None,
+    action: str,
+    outcome: str,
+) -> None:
+    """Record safe metadata without storing the user's full request."""
+    if trace is not None:
+        trace.append({"action": action, "outcome": outcome})
 
 
 if __name__ == "__main__":
-    unittest.main()
+    result = run_agent("What is the system status?", {"read_status": lambda: "healthy"})
+    print(result.answer)
