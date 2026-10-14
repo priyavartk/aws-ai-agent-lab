@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Callable
 
+from .policy import ActionPolicy
+
 
 @dataclass(frozen=True)
 class AgentResult:
@@ -16,30 +18,35 @@ def run_agent(
     request: str,
     tools: dict[str, Callable[[], str]],
     trace: list[dict[str, str]] | None = None,
+    policy: ActionPolicy | None = None,
 ) -> AgentResult:
     """Route a request to a safe read-only tool or answer directly.
 
     This is deliberately rule-based. Later, an LLM can replace the routing
     decision, while the tool boundary remains explicit and testable.
     """
+    policy = policy or ActionPolicy.read_only()
     normalized = request.strip().lower()
 
     if "status" in normalized or "health" in normalized:
-        if "read_status" not in tools:
-            result = AgentResult(
-                answer="Status checks are not enabled for this agent.",
-                action="tool_unavailable",
-            )
-            _record(trace, result.action, "blocked")
-            return result
-
-        evidence = tools["read_status"]()
-        result = AgentResult(
-            answer=f"System status: {evidence}",
+        return _run_tool_action(
             action="read_status",
+            unavailable_answer="Status checks are not enabled for this agent.",
+            tools=tools,
+            policy=policy,
+            trace=trace,
+            answer_prefix="System status: ",
         )
-        _record(trace, result.action, "completed")
-        return result
+
+    if "deploy" in normalized and "deploy" in tools:
+        return _run_tool_action(
+            action="deploy",
+            unavailable_answer="Deployment actions are not enabled for this agent.",
+            tools=tools,
+            policy=policy,
+            trace=trace,
+            answer_prefix="Deployment result: ",
+        )
 
     result = AgentResult(
         answer=(
@@ -47,6 +54,35 @@ def run_agent(
             "No infrastructure-changing actions are available."
         ),
         action="direct_answer",
+    )
+    _record(trace, result.action, "completed")
+    return result
+
+
+def _run_tool_action(
+    action: str,
+    unavailable_answer: str,
+    tools: dict[str, Callable[[], str]],
+    policy: ActionPolicy,
+    trace: list[dict[str, str]] | None,
+    answer_prefix: str,
+) -> AgentResult:
+    if action not in tools:
+        result = AgentResult(answer=unavailable_answer, action="tool_unavailable")
+        _record(trace, result.action, "blocked")
+        return result
+
+    if not policy.allows(action):
+        result = AgentResult(
+            answer=f"Action '{action}' is blocked by policy.",
+            action="policy_blocked",
+        )
+        _record(trace, result.action, "blocked")
+        return result
+
+    result = AgentResult(
+        answer=f"{answer_prefix}{tools[action]()}",
+        action=action,
     )
     _record(trace, result.action, "completed")
     return result
